@@ -3,6 +3,7 @@ set(SRC
 )
 
 add_executable(${GENERATOR_NAME} main.c ${SRC})
+target_link_libraries(${GENERATOR_NAME} ${SHAREDLIB_NAME})
 
 # OpenMP
 find_package( OpenMP REQUIRED)
