@@ -32,6 +32,6 @@ void storeTableRow(const password_t* password, checksum_t* checksum, unsigned in
         perror("Error opening file");
     }
     
-    fprintf(file, "%s : %x%x%x%x : %d\n", password, checksum[0], checksum[1], checksum[2], checksum[3], iterations);
+    fprintf(file, "%s : %x%x%x%x : %d\n", password, (*checksum)[0], (*checksum)[1], (*checksum)[2], (*checksum)[3], iterations);
     fclose(file);
 }

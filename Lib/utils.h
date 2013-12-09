@@ -23,7 +23,7 @@ static void reduce(password_t* out, const checksum_t* in)
 
 static void printDigest(checksum_t* checksum, const password_t* password)
 {
-    printf("MD5(%s) = %x%x%x%x\n", password, checksum[0], checksum[1], checksum[2], checksum[3]);
+    printf("MD5(%s) = %x%x%x%x\n", password, (*checksum)[0], (*checksum)[1], (*checksum)[2], (*checksum)[3]);
 }
 
 #endif
