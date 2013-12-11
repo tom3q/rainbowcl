@@ -9,14 +9,14 @@
 #define MAX_PASSWD	8
 
 typedef unsigned int checksum_t[4];
-typedef unsigned char password_t[MAX_PASSWD + 1];
+typedef char password_t[MAX_PASSWD + 1];
 
-static void checksum(checksum_t* out, const password_t* in)
+static void checksum(checksum_t* out, password_t* const in)
 {
-    md5(in, strlen(in), out);
+    md5(*in, strlen(*in), *out);
 }
 
-static void reduce(password_t out, const checksum_t in)
+static void reduce(password_t* out, checksum_t* const in)
 {
     // hacky: this is not a correct reduce function, resulting password may not fit in our character set
     out[0] = (in[0] & 0x00FF0000) >> 16;
@@ -30,9 +30,9 @@ static void reduce(password_t out, const checksum_t in)
     out[8] = '\0';
 }
 
-static void printDigest(checksum_t* checksum, const password_t* password)
+static void printDigest(checksum_t* checksum, password_t* const password)
 {
-    printf("MD5(%s) = %x%x%x%x\n", password, (*checksum)[0], (*checksum)[1], (*checksum)[2], (*checksum)[3]);
+    printf("MD5(%s) = %x%x%x%x\n", *password, (*checksum)[0], (*checksum)[1], (*checksum)[2], (*checksum)[3]);
 }
 
 #endif

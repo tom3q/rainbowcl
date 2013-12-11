@@ -55,7 +55,7 @@ static uint32_t to_int32(const uint8_t *bytes)
 	       | ((uint32_t) bytes[3] << 24);
 }
 
-void md5(const uint8_t *initial_msg, size_t initial_len, uint8_t *digest)
+void md5(const void *initial_msg, size_t initial_len, uint32_t *digest)
 {
 
 	// These vars will contain the hash
@@ -143,10 +143,8 @@ void md5(const uint8_t *initial_msg, size_t initial_len, uint8_t *digest)
 	// cleanup
 	free(msg);
 
-	//var char digest[16] := h0 append h1 append h2 append h3
-	//(Output is in little-endian)
-	to_bytes(h0, digest);
-	to_bytes(h1, digest + 4);
-	to_bytes(h2, digest + 8);
-	to_bytes(h3, digest + 12);
+	digest[0] = h0;
+	digest[1] = h1;
+	digest[2] = h2;
+	digest[3] = h3;
 }
