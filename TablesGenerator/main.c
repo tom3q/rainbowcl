@@ -1,7 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #include "md5.h"
 #include "utils.h"
+
+#define NUMBER_OF_PASSWORDS     1000
+#define LENGTH_OF_CHAIN         1000
 
 // Rainbow Table file format:
 // ----------------------------------------------------------------------
@@ -9,29 +15,84 @@
 // ----------------------------------------------------------------------
 // password_t : checksum_t : unsigned int
 
+// stores one rainbow table row into file
 void storeTableRow(const password_t* password, checksum_t* checksum, unsigned int iterations);
 
-int main(int argc, char* argv[])
+// generates random string with MAX_PASSWD length
+void randomString(char* out);
+
+// generates one rainbow table chain, results in ont rainbow table row
+void generateRainbowTableChain(const password_t* password);
+
+int main(void)
 {
-    checksum_t md5_digest;
-    password_t testPassword = "12345678";
+    int i;
 
-    checksum(md5_digest, testPassword);
-    printDigest(md5_digest, testPassword);
+    clock_t startTime = clock();
 
-    storeTableRow(testPassword, md5_digest, 5);
+    printf("Progress:      ");
+    for(i = 0; i < NUMBER_OF_PASSWORDS; ++i)
+    {
+        int progress = i * 100 / NUMBER_OF_PASSWORDS;
+        printf("\b\b\b\b\b%3d %%", progress);
+
+        password_t randomPassword;
+        randomString(randomPassword);
+        generateRainbowTableChain(randomPassword);
+    }
+    printf("\b\b\b\b\b100 %%\n");
+
+    clock_t endTime = clock();
+    float workTimeSeconds = (float) (endTime - startTime) / CLOCKS_PER_SEC;
+    printf("Work time: %.2f sec\n", workTimeSeconds);
 
     return 0;
 }
 
-void storeTableRow(const password_t* password, checksum_t* checksum, unsigned int iterations)
+void storeTableRow(const password_t password, checksum_t checksum, unsigned int iterations)
 {
     FILE* file = fopen(TABLE_FILE, "a+");
     if(!file)
     {
         perror("Error opening file");
+        exit(1);
     }
     
-    fprintf(file, "%s : %x%x%x%x : %d\n", password, (*checksum)[0], (*checksum)[1], (*checksum)[2], (*checksum)[3], iterations);
+    fprintf(file, "%s : %x%x%x%x : %d\n", password, checksum[0], checksum[1], checksum[2], checksum[3], iterations);
     fclose(file);
+}
+
+void randomString(char* out)
+{
+    srand(time(NULL));
+    char charset[] = "0123456789"
+                     "abcdefghijklmnopqrstuvwxyz"
+                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    size_t length = MAX_PASSWD;
+    while(length-- > 0)
+    {
+        size_t index = (size_t) ((double) rand() / RAND_MAX * (sizeof(charset) - 1));
+        *out++ = charset[index];
+    }
+
+    *out = '\0';
+}
+
+void generateRainbowTableChain(const password_t* initialPassword)
+{
+    checksum_t md5_digest;
+    int i;
+
+    password_t chainPassword;
+    strcpy(chainPassword, *initialPassword, MAX_PASSWD);
+    chainPassword[MAX_PASSWD] = '\0';
+
+    for(i = 0; i < LENGTH_OF_CHAIN; ++i)
+    {
+        checksum(md5_digest, chainPassword);
+        reduce(chainPassword, md5_digest);
+    }
+
+    storeTableRow(initialPassword, md5_digest, LENGTH_OF_CHAIN);
 }
