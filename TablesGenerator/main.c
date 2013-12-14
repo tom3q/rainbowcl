@@ -6,6 +6,15 @@
 #include "md5.h"
 #include "utils.h"
 
+// parallel settings
+#define OPENMP_MODE 1
+#define INTEL_CILK_MODE 0
+
+#if OPENMP_MODE == 1 && INTEL_CILK_MODE == 1
+    #error "Cannot compile in both OpenMP and Intel Cilk+ mode"
+#endif
+
+
 #define NUMBER_OF_PASSWORDS     1000
 #define LENGTH_OF_CHAIN         1000
 
@@ -30,6 +39,9 @@ void generateRainbowTableChain(const password_t password);
 // returns 1 if true, 0 otherwise
 int isPasswordUnique(const password_t password);
 
+// saves unique password
+void saveUniquePassword(const password_t password);
+
 int main(void)
 {
     int i;
@@ -38,24 +50,31 @@ int main(void)
     srand(time(NULL));
     clock_t startTime = clock();
 
-    printf("Progress:      ");
+#if OPENMP_MODE == 1
+    printf("OpenMP mode selected.\n");
+    #pragma omp parallel for
+#elif INTEL_CILK_MODE == 1
+    printf("Intel Cilk+ mode selected.\n");
+#else
+    printf("No parallel mode selected.\n");
+#endif
     for(i = 0; i < NUMBER_OF_PASSWORDS; ++i)
     {
-        int progress = i * 100 / NUMBER_OF_PASSWORDS;
-        printf("\b\b\b\b\b%3d %%", progress);
-
         password_t randomPassword;
         randomString(randomPassword);
         while(!isPasswordUnique(randomPassword))
             randomString(randomPassword);
+        saveUniquePassword(randomPassword);
 
         generateRainbowTableChain(randomPassword);
     }
-    printf("\b\b\b\b\b100 %%\n");
 
     clock_t endTime = clock();
     float workTimeSeconds = (float) (endTime - startTime) / CLOCKS_PER_SEC;
     printf("Work time: %.2f sec\n", workTimeSeconds);
+
+    for(i = 0; i < NUMBER_OF_PASSWORDS; ++i)
+        free(uniquePasswords[i]);
 
     return 0;
 }
@@ -120,4 +139,18 @@ int isPasswordUnique(const password_t password)
     }
 
     return 0;
+}
+
+void saveUniquePassword(const password_t password)
+{
+    int i;
+    for(i = 0; i < NUMBER_OF_PASSWORDS; ++i)
+    {
+        if(uniquePasswords[i])
+            continue;
+
+        uniquePasswords[i] = (const char*) malloc(MAX_PASSWD + 1);
+        strcpy(uniquePasswords[i], password);
+        break;
+    }
 }
