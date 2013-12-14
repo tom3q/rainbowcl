@@ -28,6 +28,7 @@ int main(void)
 {
     int i;
 
+    srand(time(NULL));
     clock_t startTime = clock();
 
     printf("Progress:      ");
@@ -58,13 +59,12 @@ void storeTableRow(const password_t password, checksum_t checksum, unsigned int 
         exit(1);
     }
     
-    fprintf(file, "%s : %x%x%x%x : %d\n", password, checksum[0], checksum[1], checksum[2], checksum[3], iterations);
+    fprintf(file, "%s : %08x%08x%08x%08x : %d\n", password, checksum[0], checksum[1], checksum[2], checksum[3], iterations);
     fclose(file);
 }
 
 void randomString(char* out)
 {
-    srand(time(NULL));
     char charset[] = "0123456789"
                      "abcdefghijklmnopqrstuvwxyz"
                      "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
