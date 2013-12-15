@@ -35,4 +35,22 @@ static void printDigest(checksum_t checksum, password_t const password)
     printf("MD5(%s) = %x%x%x%x\n", password, checksum[0], checksum[1], checksum[2], checksum[3]);
 }
 
+#define USEC_PER_SEC            1000000
+
+// returns current time in microseconds
+static inline uint64_t getTime(void)
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+
+    return tv.tv_sec * USEC_PER_SEC + tv.tv_usec;
+}
+
+// returns a time difference between now and passed argument in microseconds
+static inline uint64_t measureTime(uint64_t start)
+{
+    return getTime() - start;
+}
+
 #endif
