@@ -7,6 +7,7 @@ project(${PROJECT_NAME})
 
 set(GENERATOR_NAME TablesGenerator)
 set(CRACKER_NAME PasswordCracker)
+set(DUMPER_NAME TableDumper)
 set(SHAREDLIB_NAME util)
 set(SFMT_NAME SFMT)
 
@@ -22,5 +23,6 @@ include_directories(SFMT)
 
 add_subdirectory(${GENERATOR_NAME})
 add_subdirectory(${CRACKER_NAME})
+add_subdirectory(${DUMPER_NAME})
 add_subdirectory(Lib)
 add_subdirectory(SFMT)
