@@ -1,68 +1,72 @@
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
+#include "config.h"
 #include "md5.h"
+#include "rainbow_chain.h"
 #include "utils.h"
 
-// parallel settings
-#define OPENMP_MODE 1
-#define CILK_MODE 0
+#define SFMT_MEXP 19937
+#include "SFMT.h"
 
-#if OPENMP_MODE && CILK_MODE
-    #error "Cannot compile in both OpenMP and Cilk+ mode"
-#endif
+#define DIV_ROUND_UP(dividend, divisor) \
+    (((dividend) + (divisor) - 1) / (divisor))
 
-#define NUMBER_OF_PASSWORDS     1000000000
-#define CHAINS_IN_BLOCK         1000
-#define LENGTH_OF_CHAIN         10000
-#define NUMBER_OF_CHAINS        (NUMBER_OF_PASSWORDS / LENGTH_OF_CHAIN)
-#define NUMBER_OF_BLOCKS        (NUMBER_OF_CHAINS / CHAINS_IN_BLOCK)
-
-#if NUMBER_OF_BLOCKS == 0
-#undef NUMBER_OF_BLOCKS
-#define NUMBER_OF_BLOCKS        1
-#endif
-
-// Rainbow Table file format:
-// ----------------------------------------------------------------------
-// chain length : MD5 hash : password
-// ----------------------------------------------------------------------
-// uint32_t     : hash_t   : password_t
-struct rainbow_chain {
-    uint32_t length;
-    hash_t hash;
-    password_t password;
+struct args {
+    uint32_t chainsInBlock;
+    uint32_t chainLength;
+    uint32_t passwordLength;
+    uint32_t numberOfChains;
+    uint32_t blockNumber;
 };
 
-// stores one rainbow table row into file
-static void storeTableChain(struct rainbow_chain *chain)
+static sfmt_t sfmt;
+
+static inline void blockFileName(char *out, struct args *args)
 {
-    FILE* file = fopen(TABLE_FILE, "ab");
+    sprintf(out, "rainbow-len%u-%03u.tmp",
+            args->passwordLength, args->blockNumber);
+}
+
+static inline void outFileName(char *out, struct args *args)
+{
+    sprintf(out, "rainbow-len%u.tbl", args->passwordLength);
+}
+
+// stores one rainbow table row into file
+static void storeTableChains(struct args *args,
+                            struct rainbow_chain *chain)
+{
+    char filename[256];
+
+    blockFileName(filename, args);
+
+    FILE* file = fopen(filename, "wb");
     if(!file)
     {
         perror("Error opening file");
         exit(1);
     }
 
-    fwrite(chain, sizeof(*chain), 1, file);
+    fwrite(chain, sizeof(*chain), args->chainsInBlock, file);
     fclose(file);
 }
 
 // generates random string with up to MAX_PASSWD length
-static void randomString(char* out)
+static void randomString(char* out, size_t length)
 {
-    static const char charset[] = "0123456789"
-                                  "abcdefghijklmnopqrstuvwxyz"
-                                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-    size_t length = (size_t) ((double) rand() / RAND_MAX * MAX_PASSWD);
     while(length-- > 0)
     {
-        size_t index = (size_t) ((double) rand() /
-                                            RAND_MAX * (sizeof(charset) - 1));
+        uint32_t random = sfmt_genrand_uint32(&sfmt);
+        size_t index = (size_t) ((double)CHARSET_SIZE * random / UINT_MAX);
+
+        if (index >= CHARSET_SIZE)
+            index = CHARSET_SIZE - 1;
+
         *out++ = charset[index];
     }
 
@@ -70,7 +74,8 @@ static void randomString(char* out)
 }
 
 // generates one rainbow table chain, results in ont rainbow table row
-static void generateRainbowTableChain(struct rainbow_chain *chain)
+static void generateRainbowTableChain(struct args *args,
+                                      struct rainbow_chain *chain)
 {
     password_t chainPassword;
     hash_t passwordHash;
@@ -78,54 +83,163 @@ static void generateRainbowTableChain(struct rainbow_chain *chain)
 
     strcpy(chainPassword, chain->password);
 
-    for(i = 0; i < LENGTH_OF_CHAIN; ++i)
+    for(i = 0; i < args->chainLength; ++i)
     {
         hash(passwordHash, chainPassword);
-        reduce(chainPassword, passwordHash);
+        reduce(chainPassword, passwordHash, args->passwordLength, i);
     }
 
     memcpy(chain->hash, passwordHash, sizeof(passwordHash));
-    chain->length = i;
 }
 
 // generates initial password for a block of rainbow chains
-static void prepareBlock(struct rainbow_chain *chains)
+static void prepareBlock(struct args *args, struct rainbow_chain *chains)
 {
     int i;
 
-    for (i = 0; i < CHAINS_IN_BLOCK; ++i)
+    for (i = 0; i < args->chainsInBlock; ++i)
     {
-        randomString(chains[i].password);
+        randomString(chains[i].password, args->passwordLength);
     }
 }
 
 // generates all rainbow chains in a block of rainbow chains
-static void processBlock(struct rainbow_chain *chains)
+static void processBlock(struct args *args, struct rainbow_chain *chains)
 {
     int i;
 
 #if OPENMP_MODE
     #pragma omp parallel for
-    for(i = 0; i < CHAINS_IN_BLOCK; ++i)
+    for(i = 0; i < args->chainsInBlock; ++i)
 #elif CILK_MODE
-    cilk_for (i = 0; i < CHAINS_IN_BLOCK; ++i)
+    cilk_for (i = 0; i < args->chainsInBlock; ++i)
 #else
-    for(i = 0; i < CHAINS_IN_BLOCK; ++i)
+    for(i = 0; i < args->chainsInBlock; ++i)
 #endif
     {
-        generateRainbowTableChain(&chains[i]);
+        generateRainbowTableChain(args, &chains[i]);
     }
 }
 
-// saves a block of random chains to file
-static void saveBlock(struct rainbow_chain *chains)
+static int chainCompare(const void *a, const void *b)
 {
+    const struct rainbow_chain *ca = a;
+    const struct rainbow_chain *cb = b;
+
+    return memcmp(ca->hash, cb->hash, sizeof(ca->hash));
+}
+
+// saves a block of random chains to file
+static void saveBlock(struct args *args, struct rainbow_chain *chains)
+{
+    qsort(chains, args->chainsInBlock, sizeof(*chains), chainCompare);
+    storeTableChains(args, chains);
+}
+
+static void parseArgs(struct args *args, int argc, char **argv)
+{
+    unsigned set = 0;
     int i;
 
-    for (i = 0; i < CHAINS_IN_BLOCK; ++i)
-    {
-        storeTableChain(&chains[i]);
+    for (i = 1; i < argc; ++i) {
+        if (!strcmp(argv[i], "-c")) {
+            if (i == argc - 1)
+                goto show_usage;
+            args->chainLength = atoi(argv[i + 1]);
+            ++i;
+            set |= (1 << 0);
+            continue;
+        } else if (!strcmp(argv[i], "-b")) {
+            if (i == argc - 1)
+                goto show_usage;
+            args->chainsInBlock = atoi(argv[i + 1]);
+            ++i;
+            set |= (1 << 1);
+            continue;
+        } else if (!strcmp(argv[i], "-l")) {
+            if (i == argc - 1)
+                goto show_usage;
+            args->passwordLength = atoi(argv[i + 1]);
+            ++i;
+            set |= (1 << 2);
+            continue;
+        } else if (!strcmp(argv[i], "-n")) {
+            if (i == argc - 1)
+                goto show_usage;
+            args->numberOfChains = atoi(argv[i + 1]);
+            ++i;
+            set |= (1 << 3);
+            continue;
+        }
     }
+
+    if (set == 0xf)
+        return;
+
+show_usage:
+    fprintf(stderr,
+            "%s -l password_length -n number_of_chains "
+            "-c chain_length -b chains_in_block\n",
+            argv[0]);
+    exit(1);
+}
+
+static void sortTables(struct args *args, uint32_t numberOfBlocks)
+{
+    struct rainbow_chain *chains;
+    char filename[256];
+    FILE **blocks;
+    FILE *out;
+    size_t ret;
+    int i;
+
+    chains = malloc(numberOfBlocks * sizeof(*chains));
+    assert(chains);
+
+    blocks = malloc(numberOfBlocks * sizeof(*blocks));
+    assert(blocks);
+
+    for (i = 0; i < numberOfBlocks; ++i) {
+        args->blockNumber = i;
+        blockFileName(filename, args);
+        blocks[i] = fopen(filename, "rb");
+        assert(blocks[i]);
+
+        ret = fread(&chains[i], sizeof(*chains), 1, blocks[i]);
+        assert(ret == 1);
+    }
+
+    outFileName(filename, args);
+    out = fopen(filename, "wb");
+    assert(out);
+
+    do {
+        int min = 0;
+
+        for (i = 0; i < numberOfBlocks; ++i) {
+            if (memcmp(chains[i].hash, chains[min].hash, sizeof(hash_t)) < 0)
+                min = i;
+        }
+
+        ret = fwrite(&chains[min], sizeof(*chains), 1, out);
+        assert(ret == 1);
+
+        ret = fread(&chains[min], sizeof(*chains), 1, blocks[min]);
+        if (ret != 1) {
+            fclose(blocks[min]);
+            --numberOfBlocks;
+            blocks[min] = blocks[numberOfBlocks];
+            chains[min] = chains[numberOfBlocks];
+        }
+    } while (numberOfBlocks > 1);
+
+    do {
+        ret = fwrite(&chains[0], sizeof(*chains), 1, out);
+        assert(ret == 1);
+    } while (fread(&chains[0], sizeof(*chains), 1, blocks[0]) == 1);
+
+    fclose(blocks[0]);
+    fclose(out);
 }
 
 // entry point of the program
@@ -133,8 +247,20 @@ int main(int argc, char **argv)
 {
     uint64_t startTime, totalTime;
     struct rainbow_chain *chains;
+    uint64_t numberOfPasswords;
+    uint32_t numberOfBlocks;
     float workTimeSeconds;
-    int i;
+    struct args args;
+    uint32_t i;
+
+    memset(&args, 0, sizeof(args));
+    parseArgs(&args, argc, argv);
+
+    assert(args.chainsInBlock);
+    assert(args.chainLength);
+    assert(args.passwordLength);
+    assert(args.numberOfChains);
+    assert(args.passwordLength <= MAX_PASSWD);
 
 #if OPENMP_MODE
     printf("OpenMP mode selected.\n");
@@ -144,34 +270,66 @@ int main(int argc, char **argv)
     printf("No parallel mode selected.\n");
 #endif
 
-    FILE* file = fopen(TABLE_FILE, "wb");
-    if(!file)
-    {
-        perror("Error opening file");
-        return -1;
-    }
-    fclose(file);
-
     // init program
     startTime = measureTime(0);
 
-    chains = malloc(CHAINS_IN_BLOCK * sizeof(*chains));
+    sfmt_init_gen_rand(&sfmt, time(NULL));
+
+    numberOfPasswords = CHARSET_SIZE;
+    for (i = 1; i < args.passwordLength; ++i) {
+        numberOfPasswords *= CHARSET_SIZE;
+    }
+
+    numberOfBlocks = DIV_ROUND_UP(args.numberOfChains, args.chainsInBlock);
+    if (!numberOfBlocks)
+        numberOfBlocks = 1;
+
+    printf("Generating rainbow table for %u-character passwords\n",
+                                              args.passwordLength);
+    printf("Total number of passwords: %lu\n", numberOfPasswords);
+    printf("Length of rainbow chain:   %u\n", args.chainLength);
+    printf("Number of rainbow chains:  %u\n", args.numberOfChains);
+    printf("Rainbow chain block size:  %u\n", args.chainsInBlock);
+    printf("Number of chain blocks:    %u\n", numberOfBlocks);
+    printf("Estimated password coverage: %f%%\n", 100.0f *
+                args.numberOfChains * args.chainLength / numberOfPasswords);
+
+    chains = malloc(args.chainsInBlock * sizeof(*chains));
     assert(chains);
 
-    srand(time(NULL));
+    for (i = 0; i < numberOfBlocks; ++i) {
+        printf("Processing block %d of %d...\n", i + 1, numberOfBlocks);
 
-    for (i = 0; i < NUMBER_OF_BLOCKS; ++i) {
-        printf("Processing block %d of %d...\n", i, NUMBER_OF_BLOCKS);
-        prepareBlock(chains);
-        processBlock(chains);
-        saveBlock(chains);
+        if (i == numberOfBlocks - 1
+            && args.chainsInBlock > args.numberOfChains)
+        {
+            args.chainsInBlock = args.numberOfChains;
+        }
+
+        args.blockNumber = i;
+
+        prepareBlock(&args, chains);
+        processBlock(&args, chains);
+        saveBlock(&args, chains);
+
+        args.numberOfChains -= args.chainsInBlock;
     }
+
+    free(chains);
+
+    sortTables(&args, numberOfBlocks);
 
     totalTime = measureTime(startTime);
     workTimeSeconds = (float)totalTime / USEC_PER_SEC;
     printf("Work time: %.2f sec\n", workTimeSeconds);
 
-    free(chains);
+    printf("Reduction function statistics:\n");
+    for (i = 0; i < CHARSET_SIZE; i += 4) {
+        printf("%c : %-10u    ", charset[i],     charsetStats[i]);
+        printf("%c : %-10u    ", charset[i + 1], charsetStats[i + 1]);
+        printf("%c : %-10u    ", charset[i + 2], charsetStats[i + 2]);
+        printf("%c : %-10u\n",   charset[i + 3], charsetStats[i + 3]);
+    }
 
     return 0;
 }

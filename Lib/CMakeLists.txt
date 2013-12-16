@@ -1,5 +1,6 @@
 set(SRC
 	md5.c
+	utils.c
 )
 
 file(GLOB INC "*.h")
