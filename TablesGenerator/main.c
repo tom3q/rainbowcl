@@ -16,6 +16,10 @@
 #define DIV_ROUND_UP(dividend, divisor) \
     (((dividend) + (divisor) - 1) / (divisor))
 
+#if CILK_MODE
+#include <cilk/cilk.h>
+#endif
+
 struct args {
     uint32_t chainsInBlock;
     uint32_t chainLength;
