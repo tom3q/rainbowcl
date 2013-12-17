@@ -8,31 +8,19 @@ uint32_t charsetStats[CHARSET_SIZE] = { 0, };
 
 void reduce(password_t out, hash_t const in, size_t length, uint32_t salt)
 {
-    uint8_t bits = 32 - __builtin_clz(CHARSET_SIZE - 1);
-    uint8_t pos = 0;
-    int i;
+    unsigned int i;
 
-    for (i = 0; i < length; ++i) {
-        uint8_t word = pos / 32;
-        uint32_t val = in[pos / 32];
+    for (i = 0; i < (length + 2) / 3; ++i) {
+        uint32_t word = in[i] + salt;
+        unsigned int j;
 
-        val >>= pos % 32;
-        val &= (1 << bits) - 1;
+        for (j = 0; j < 3 && 3 * i + j < length; ++j) {
+            uint32_t index = word % (8 * CHARSET_SIZE);
 
-        if ((pos + bits) % 32 < bits) {
-            uint32_t val2 = in[word + 1];
-
-            val2 &= (1 << ((pos + bits) % 32)) - 1;
-            val2 <<= bits - ((pos + bits) % 32);
-            val |= val2;
+            ++charsetStats[index % CHARSET_SIZE];
+            out[3 * i + j] = charset[index % CHARSET_SIZE];
+            word /= (8 * CHARSET_SIZE);
         }
-
-        val ^= salt % CHARSET_SIZE;
-        val %= CHARSET_SIZE;
-
-        out[i] = charset[val];
-        ++charsetStats[val];
-        pos += bits;
     }
 }
 
