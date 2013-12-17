@@ -6,22 +6,22 @@ const char charset[CHARSET_SIZE] = "0123456789,."
                                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 // generated from charset above using ReduceGenerator
 const char reductionMap[REDUCTION_TABLE_SIZE] =
-                                    "lWLJHIQP0R0nZE0B2y5RYdU6OdSvfkIs"
-                                    "1Xf0AZLmpkxKoHsc97DcZG6vgh4nb5uK"
-                                    "RlQquB8GbOwBEpBggTvzUS6OTl9cAw3."
-                                    "oZhyAg3M1a25V84xGQ1zpf5l4gMGtWSE"
-                                    "N,ZiM6cPnp6,svNxLWCq6Qcy32kYWCQm"
-                                    "ElvV38NNB8ehWm,2rPyLTrMPqHVxakrb"
-                                    "IUNoZpGdru1xVwz.,f19tOHizRATqrzX"
-                                    "afhFS1ChYLsK7rqmOF2IJDXjCXj1Sim3"
-                                    "ur7TUoMPs87VegTPEpA5BPwdDgtAVHwF"
-                                    "SxCKOSzL.Rnv,xikuZIz2jtbbN3lwUoE"
-                                    "kh9FV4EIoHvqaJ80bUejt5DDjmo9aKc0"
-                                    "Hh,MsTGnFYyS4RemCLDFUn9WENBJqOYc"
-                                    "Kafliv7OJeQe5rF7g76Y12MHdAaDuGft"
-                                    "8yKp8XV7yPJsL,jI..b2liyk.RXqXWQu"
-                                    "zhpj.u9WfNwBoaM53YA0iQnsebYXT,Cc"
-                                    "6t.GdjxFdmC4i93RK0Z4DwkJU4dneItJ";
+                                    "bKeixL,OfX.IyFAoPVafpxZtjXBRzG7w"
+                                    "JIDdQ8IKLzI6VG0n9j0b4i7xbcKBg640"
+                                    "EqOT90SdpdMAehKBgdthFmQGanZe5Fq2"
+                                    ".LEyuhrYAqcovBsKIezn4gFOTXhHX3Db"
+                                    "J6TPsN2NGW0uhvYlSBy1pmvD,40nWXvx"
+                                    "wmesYED7zd5yPTF73HcEsiWU5u8LfMwg"
+                                    "65MgL63NdGWdO,P8OVx1.X4R5i6lcp.h"
+                                    "NM4YiCVUMtrV,Ear1I3BySLUrzfQS,tz"
+                                    "xO5qukVcCA1f1.ile9786JJQDy2JxQ.o"
+                                    "loYVksvuocPNRNRvCE8tpq7tw4mOQJoA"
+                                    "aYEaQAYqZXblV8k1a9uirCZMvyQJryFn"
+                                    "DHA,9XFMo2Y0c,nsabwC7CDSS9MkwjzK"
+                                    "CKibkDUT6.HZRuoh5PgUg3IpEGGZZ518"
+                                    "rfNuHW,jpHjWlSR2ngUNtnO21z3te3HG"
+                                    "3lKhLeUm9kPjsmxvTHjW9LZWjTRbw8fa"
+                                    "kmJsB7f0IArk4cwFql.CBPTR2mdpU2qS";
 
 void reduce(password_t out, hash_t const in, size_t length, uint32_t salt)
 {
