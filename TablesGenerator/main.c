@@ -349,5 +349,30 @@ int main(int argc, char **argv)
     printf("min = %u, max = %u, avg = %u, diff = %u\n",
             min, max, (min + max) / 2, max - min);
 
+    max = 0;
+    min = UINT_MAX;
+    printf("Reduction character distribution:\n");
+    for (i = 0; i < CHARSET_SIZE; i += 4) {
+        unsigned int j;
+
+        for (j = 0; j < 4; ++j) {
+            if (reductionStats[(uint32_t)charset[i + j]] < min)
+                min = reductionStats[(uint32_t)charset[i + j]];
+            if (reductionStats[(uint32_t)charset[i + j]] > max)
+                max = reductionStats[(uint32_t)charset[i + j]];
+        }
+
+        printf("%c : %-10u    ", charset[i],
+                reductionStats[(uint32_t)charset[i]]);
+        printf("%c : %-10u    ", charset[i + 1],
+                reductionStats[(uint32_t)charset[i + 1]]);
+        printf("%c : %-10u    ", charset[i + 2],
+                reductionStats[(uint32_t)charset[i + 2]]);
+        printf("%c : %-10u\n",   charset[i + 3],
+                reductionStats[(uint32_t)charset[i + 3]]);
+    }
+    printf("min = %u, max = %u, avg = %u, diff = %u\n",
+            min, max, (min + max) / 2, max - min);
+
     return 0;
 }

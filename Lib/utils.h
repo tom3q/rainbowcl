@@ -14,6 +14,7 @@ typedef char password_t[MAX_PASSWD + 1];
 #define REDUCTION_TABLE_SIZE    512
 #define CHARSET_SIZE            64
 extern const char charset[CHARSET_SIZE];
+extern uint32_t reductionStats[256];
 
 void reduce(password_t out, hash_t const in, size_t length, uint32_t salt);
 

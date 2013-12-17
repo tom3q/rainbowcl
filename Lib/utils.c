@@ -23,6 +23,8 @@ const char reductionMap[REDUCTION_TABLE_SIZE] =
                                     "3lKhLeUm9kPjsmxvTHjW9LZWjTRbw8fa"
                                     "kmJsB7f0IArk4cwFql.CBPTR2mdpU2qS";
 
+uint32_t reductionStats[256];
+
 void reduce(password_t out, hash_t const in, size_t length, uint32_t salt)
 {
     unsigned int i;
@@ -35,6 +37,7 @@ void reduce(password_t out, hash_t const in, size_t length, uint32_t salt)
             uint32_t index = word % REDUCTION_TABLE_SIZE;
 
             out[3 * i + j] = reductionMap[index];
+            ++reductionStats[(uint32_t)reductionMap[index]];
             word /= REDUCTION_TABLE_SIZE;
         }
     }
