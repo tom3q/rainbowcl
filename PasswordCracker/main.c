@@ -48,16 +48,38 @@ static void stringToHash(hash_t out, const char *in)
 }
 
 static int lookupChain(FILE *f, const hash_t initialHash,
-                       unsigned long index, password_t password,
+                       unsigned long index, struct rainbow_chain *foundChain,
                        uint32_t passwordLength, uint32_t chainLength)
 {
     struct rainbow_chain chain;
     size_t read;
     uint32_t i;
+    uint32_t offset = 0;
+    int backwards = 0;
 
-    fseek(f, index * sizeof(chain), SEEK_SET);
+again:
+    if (backwards) {
+        if (offset > index)
+            return 0;
+        i = index - offset;
+    } else {
+        i = index + offset;
+    }
+
+    fseek(f, i * sizeof(chain), SEEK_SET);
     read = fread(&chain, sizeof(chain), 1, f);
-    assert(read == 1);
+
+    if (read != 1
+        || memcmp(chain.hash, foundChain->hash, sizeof(chain.hash)))
+    {
+        if (backwards) {
+            return 0;
+        } else {
+            backwards = 1;
+            offset = 1;
+            goto again;
+        }
+    }
 
     hash(chain.hash, chain.password);
     for (i = 0; i < chainLength; ++i) {
@@ -71,10 +93,12 @@ static int lookupChain(FILE *f, const hash_t initialHash,
     if (!memcmp(chain.hash, initialHash, sizeof(chain.hash)))
             goto found;
 
-    return 0;
+    ++offset;
+    goto again;
 
 found:
-    strcpy(password, chain.password);
+    memcpy(foundChain->hash, initialHash, sizeof(hash_t));
+    strcpy(foundChain->password, chain.password);
     return 1;
 }
 
@@ -96,8 +120,11 @@ int main(int argc, char **argv)
     assert(read == 1);
 
     passwordLength = strlen(chain.password);
-    stringToHash(initialHash, argv[2]);
-    chainLength = atoi(argv[3]);
+    stringToHash(initialHash, argv[3]);
+    chainLength = atoi(argv[2]);
+
+    printf("Looking for hash %s in table %s\n", argv[3], argv[1]);
+    printf("Password length is %u\n", passwordLength);
 
     fseek(f, 0, SEEK_END);
     len = ftell(f);
@@ -120,7 +147,7 @@ int main(int argc, char **argv)
 
         index = (unsigned long)bsearch(&chain, (void *)1, len, 1, chainCompare);
         if (index && lookupChain(f, initialHash, index - 1,
-                                chain.password, passwordLength, chainLength))
+                                    &chain, passwordLength, chainLength))
             break;
     }
 
