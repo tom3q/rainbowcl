@@ -11,6 +11,7 @@
 typedef unsigned int hash_t[4];
 typedef char password_t[MAX_PASSWD + 1];
 
+#define REDUCTION_TABLE_SIZE    512
 #define CHARSET_SIZE            64
 extern const char charset[CHARSET_SIZE];
 extern uint32_t charsetStats[CHARSET_SIZE];
