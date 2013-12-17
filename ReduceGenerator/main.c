@@ -34,6 +34,8 @@ int main(int argc, char **argv)
 
         random = sfmt_genrand_uint32(&sfmt);
         index = (uint32_t)((double)sourceSize * random / UINT_MAX);
+        if (index == sourceSize)
+            index = sourceSize - 1;
 
         printf("%c", charsetSrc[index]);
 
