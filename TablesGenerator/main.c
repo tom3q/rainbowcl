@@ -258,13 +258,21 @@ static void sortTables(struct args *args, uint32_t numberOfBlocks)
 int main(int argc, char **argv)
 {
     uint64_t startTime, totalTime;
-    struct rainbow_chain *chains;
     uint64_t numberOfPasswords;
     uint32_t numberOfBlocks;
     float workTimeSeconds;
     struct args args;
     uint32_t i;
     uint32_t min, max;
+    int current = 0;
+
+#if PIPELINING
+    struct rainbow_chain *chains[3];
+
+#else
+    struct rainbow_chain *chains[1];
+
+#endif
 
     memset(&args, 0, sizeof(args));
     parseArgs(&args, argc, argv);
@@ -277,10 +285,13 @@ int main(int argc, char **argv)
 
 #if OPENMP_MODE
     printf("OpenMP mode selected.\n");
+
 #elif CILK_MODE
     printf("Intel Cilk+ mode selected.\n");
+
 #else
     printf("No parallel mode selected.\n");
+
 #endif
 
     // init program
@@ -306,18 +317,64 @@ int main(int argc, char **argv)
     printf("Estimated password coverage: %f%%\n", 100.0f *
                 args.numberOfChains * args.chainLength / numberOfPasswords);
 
-    chains = malloc(args.chainsInBlock * sizeof(*chains));
-    assert(chains);
+    chains[0] = malloc(args.chainsInBlock * sizeof(**chains));
+    assert(chains[0]);
 
+#if PIPELINING
+    chains[1] = malloc(args.chainsInBlock * sizeof(**chains));
+    assert(chains[1]);
+    chains[2] = malloc(args.chainsInBlock * sizeof(**chains));
+    assert(chains[2]);
+
+#endif
+
+#if PIPELINING
+    prepareBlock(&args, chains[0]);
+
+#endif
+
+    current = 0;
     for (i = 0; i < numberOfBlocks; ++i) {
+
+#if PIPELINING
+        uint32_t next = (current + 1) % 3;
+
+#endif
+
         printf("Processing block %d of %d...\n", i + 1, numberOfBlocks);
 
-        prepareBlock(&args, chains);
-        processBlock(&args, chains);
-        saveBlock(&args, chains, i);
+#if PIPELINING && CILK_MODE
+        if (i != numberOfBlocks - 1)
+            cilk_spawn prepareBlock(&args, chains[next]);
+        processBlock(&args, chains[current]);
+        cilk_sync;
+        cilk_spawn saveBlock(&args, chains[current], i);
+
+#else
+        prepareBlock(&args, chains[current]);
+        processBlock(&args, chains[current]);
+        saveBlock(&args, chains[current], i);
+
+#endif
+
+#if PIPELINING
+        current = next;
+
+#endif
     }
 
-    free(chains);
+#if CILK_MODE
+    cilk_sync;
+
+#endif
+
+    free(chains[0]);
+
+#if PIPELINING
+    free(chains[1]);
+    free(chains[2]);
+
+#endif
 
     sortTables(&args, numberOfBlocks);
 
