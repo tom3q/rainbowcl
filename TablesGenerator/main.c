@@ -88,6 +88,7 @@ static void generateRainbowTableChain(struct args *args,
         hash(passwordHash, chainPassword);
         reduce(chainPassword, passwordHash, args->passwordLength, i);
     }
+    hash(passwordHash, chainPassword);
 
     memcpy(chain->hash, passwordHash, sizeof(passwordHash));
 }
