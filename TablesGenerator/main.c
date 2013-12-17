@@ -25,16 +25,16 @@ struct args {
     uint32_t chainLength;
     uint32_t passwordLength;
     uint32_t numberOfChains;
-    uint32_t blockNumber;
     unsigned showDist :1;
 };
 
 static sfmt_t sfmt;
 
-static inline void blockFileName(char *out, struct args *args)
+static inline void blockFileName(char *out, struct args *args,
+                                 uint32_t blockNumber)
 {
     sprintf(out, "rainbow-len%u-%03u.tmp",
-            args->passwordLength, args->blockNumber);
+            args->passwordLength, blockNumber);
 }
 
 static inline void outFileName(char *out, struct args *args)
@@ -43,12 +43,12 @@ static inline void outFileName(char *out, struct args *args)
 }
 
 // stores one rainbow table row into file
-static void storeTableChains(struct args *args,
-                            struct rainbow_chain *chain)
+static void storeTableChains(struct args *args, struct rainbow_chain *chain,
+                             uint32_t blockNumber)
 {
     char filename[256];
 
-    blockFileName(filename, args);
+    blockFileName(filename, args, blockNumber);
 
     FILE* file = fopen(filename, "wb");
     if(!file)
@@ -139,10 +139,11 @@ static int chainCompare(const void *a, const void *b)
 }
 
 // saves a block of random chains to file
-static void saveBlock(struct args *args, struct rainbow_chain *chains)
+static void saveBlock(struct args *args, struct rainbow_chain *chains,
+                      uint32_t blockNumber)
 {
     qsort(chains, args->chainsInBlock, sizeof(*chains), chainCompare);
-    storeTableChains(args, chains);
+    storeTableChains(args, chains, blockNumber);
 }
 
 static void parseArgs(struct args *args, int argc, char **argv)
@@ -212,8 +213,7 @@ static void sortTables(struct args *args, uint32_t numberOfBlocks)
     assert(blocks);
 
     for (i = 0; i < numberOfBlocks; ++i) {
-        args->blockNumber = i;
-        blockFileName(filename, args);
+        blockFileName(filename, args, i);
         blocks[i] = fopen(filename, "rb");
         assert(blocks[i]);
 
@@ -319,11 +319,9 @@ int main(int argc, char **argv)
             args.chainsInBlock = args.numberOfChains;
         }
 
-        args.blockNumber = i;
-
         prepareBlock(&args, chains);
         processBlock(&args, chains);
-        saveBlock(&args, chains);
+        saveBlock(&args, chains, i);
 
         args.numberOfChains -= args.chainsInBlock;
     }
