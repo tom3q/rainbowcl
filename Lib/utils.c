@@ -4,8 +4,6 @@ const char charset[CHARSET_SIZE] = "0123456789,."
                                    "abcdefghijklmnopqrstuvwxyz"
                                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-uint32_t charsetStats[CHARSET_SIZE] = { 0, };
-
 void reduce(password_t out, hash_t const in, size_t length, uint32_t salt)
 {
     unsigned int i;
@@ -17,7 +15,6 @@ void reduce(password_t out, hash_t const in, size_t length, uint32_t salt)
         for (j = 0; j < 3 && 3 * i + j < length; ++j) {
             uint32_t index = word % (8 * CHARSET_SIZE);
 
-            ++charsetStats[index % CHARSET_SIZE];
             out[3 * i + j] = charset[index % CHARSET_SIZE];
             word /= (8 * CHARSET_SIZE);
         }

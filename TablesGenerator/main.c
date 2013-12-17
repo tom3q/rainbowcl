@@ -324,13 +324,5 @@ int main(int argc, char **argv)
     workTimeSeconds = (float)totalTime / USEC_PER_SEC;
     printf("Work time: %.2f sec\n", workTimeSeconds);
 
-    printf("Reduction function statistics:\n");
-    for (i = 0; i < CHARSET_SIZE; i += 4) {
-        printf("%c : %-10u    ", charset[i],     charsetStats[i]);
-        printf("%c : %-10u    ", charset[i + 1], charsetStats[i + 1]);
-        printf("%c : %-10u    ", charset[i + 2], charsetStats[i + 2]);
-        printf("%c : %-10u\n",   charset[i + 3], charsetStats[i + 3]);
-    }
-
     return 0;
 }
