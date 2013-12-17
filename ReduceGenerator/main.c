@@ -14,6 +14,7 @@ int main(int argc, char **argv)
 {
     unsigned int sourceSize = REDUCTION_TABLE_SIZE;
     char *charsetSrc;
+    char *output;
     sfmt_t sfmt;
     unsigned int i;
 
@@ -21,6 +22,9 @@ int main(int argc, char **argv)
 
     charsetSrc = malloc(REDUCTION_TABLE_SIZE * sizeof(char));
     assert(charsetSrc);
+
+    output = malloc(REDUCTION_TABLE_SIZE * sizeof(char));
+    assert(output);
 
     assert(REDUCTION_TABLE_SIZE % CHARSET_SIZE == 0);
 
@@ -37,11 +41,17 @@ int main(int argc, char **argv)
         if (index == sourceSize)
             index = sourceSize - 1;
 
-        printf("%c", charsetSrc[index]);
-
+        output[i] = charsetSrc[index];
         charsetSrc[index] = charsetSrc[--sourceSize];
     }
 
+    printf("const char reductionMap[REDUCTION_TABLE_SIZE] =");
+    for (i = 0; i < REDUCTION_TABLE_SIZE / 32; ++i)
+        printf("\n                                    \"%.32s\"",
+                output + 32 * i);
+    printf(";\n");
+
+    free(output);
     free(charsetSrc);
     return 0;
 }
