@@ -22,6 +22,7 @@ struct args {
     uint32_t passwordLength;
     uint32_t numberOfChains;
     uint32_t blockNumber;
+    unsigned showDist :1;
 };
 
 static sfmt_t sfmt;
@@ -173,6 +174,9 @@ static void parseArgs(struct args *args, int argc, char **argv)
             args->numberOfChains = atoi(argv[i + 1]);
             ++i;
             set |= (1 << 3);
+            continue;
+        } else if (!strcmp(argv[i], "-d")) {
+            args->showDist = 1;
             continue;
         }
     }
@@ -327,6 +331,9 @@ int main(int argc, char **argv)
     totalTime = measureTime(startTime);
     workTimeSeconds = (float)totalTime / USEC_PER_SEC;
     printf("Work time: %.2f sec\n", workTimeSeconds);
+
+    if (!args.showDist)
+        return 0;
 
     max = 0;
     min = UINT_MAX;
