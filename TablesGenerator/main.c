@@ -294,8 +294,7 @@ int main(int argc, char **argv)
     }
 
     numberOfBlocks = DIV_ROUND_UP(args.numberOfChains, args.chainsInBlock);
-    if (!numberOfBlocks)
-        numberOfBlocks = 1;
+    args.numberOfChains = numberOfBlocks * args.chainsInBlock;
 
     printf("Generating rainbow table for %u-character passwords\n",
                                               args.passwordLength);
@@ -313,17 +312,9 @@ int main(int argc, char **argv)
     for (i = 0; i < numberOfBlocks; ++i) {
         printf("Processing block %d of %d...\n", i + 1, numberOfBlocks);
 
-        if (i == numberOfBlocks - 1
-            && args.chainsInBlock > args.numberOfChains)
-        {
-            args.chainsInBlock = args.numberOfChains;
-        }
-
         prepareBlock(&args, chains);
         processBlock(&args, chains);
         saveBlock(&args, chains, i);
-
-        args.numberOfChains -= args.chainsInBlock;
     }
 
     free(chains);
