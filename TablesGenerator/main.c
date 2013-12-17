@@ -56,6 +56,8 @@ static void storeTableChains(struct args *args,
     fclose(file);
 }
 
+static uint32_t charsetStats[CHARSET_SIZE];
+
 // generates random string with up to MAX_PASSWD length
 static void randomString(char* out, size_t length)
 {
@@ -68,6 +70,7 @@ static void randomString(char* out, size_t length)
             index = CHARSET_SIZE - 1;
 
         *out++ = charset[index];
+        ++charsetStats[index];
     }
 
     *out = '\0';
@@ -253,6 +256,7 @@ int main(int argc, char **argv)
     float workTimeSeconds;
     struct args args;
     uint32_t i;
+    uint32_t min, max;
 
     memset(&args, 0, sizeof(args));
     parseArgs(&args, argc, argv);
@@ -323,6 +327,27 @@ int main(int argc, char **argv)
     totalTime = measureTime(startTime);
     workTimeSeconds = (float)totalTime / USEC_PER_SEC;
     printf("Work time: %.2f sec\n", workTimeSeconds);
+
+    max = 0;
+    min = UINT_MAX;
+    printf("Random character distribution:\n");
+    for (i = 0; i < CHARSET_SIZE; i += 4) {
+        unsigned int j;
+
+        for (j = 0; j < 4; ++j) {
+            if (charsetStats[i + j] < min)
+                min = charsetStats[i + j];
+            if (charsetStats[i + j] > max)
+                max = charsetStats[i + j];
+        }
+
+        printf("%c : %-10u    ", charset[i],     charsetStats[i]);
+        printf("%c : %-10u    ", charset[i + 1], charsetStats[i + 1]);
+        printf("%c : %-10u    ", charset[i + 2], charsetStats[i + 2]);
+        printf("%c : %-10u\n",   charset[i + 3], charsetStats[i + 3]);
+    }
+    printf("min = %u, max = %u, avg = %u, diff = %u\n",
+            min, max, (min + max) / 2, max - min);
 
     return 0;
 }
