@@ -5,6 +5,8 @@ cmake_minimum_required(VERSION 2.8.12)
 set(PROJECT_NAME rainbowcl)
 project(${PROJECT_NAME})
 
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+
 set(GENERATOR_NAME TablesGenerator)
 set(CRACKER_NAME PasswordCracker)
 set(DUMPER_NAME TableDumper)

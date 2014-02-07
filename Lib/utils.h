@@ -42,5 +42,12 @@ static inline uint64_t measureTime(uint64_t start)
 }
 
 void printHash(char *out, const hash_t hash);
+static inline void printfHash(const hash_t hash)
+{
+    char buf[64];
+
+    printHash(buf, hash);
+    printf("%s\n", buf);
+}
 
 #endif

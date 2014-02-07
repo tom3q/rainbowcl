@@ -16,8 +16,18 @@
 #define DIV_ROUND_UP(dividend, divisor) \
     (((dividend) + (divisor) - 1) / (divisor))
 
+#if OPENMP_MODE
+#warning Compiling in OpenMP mode...
+#endif
+
 #if CILK_MODE
+#warning Compiling in Cilk+ mode...
 #include <cilk/cilk.h>
+#endif
+
+#if OPENCL_MODE
+#warning Compiling in OpenCL mode...
+#include <CL/cl.h>
 #endif
 
 struct args {
@@ -25,7 +35,7 @@ struct args {
     uint32_t chainLength;
     uint32_t passwordLength;
     uint32_t numberOfChains;
-    unsigned showDist :1;
+    uint32_t showDist;
 };
 
 static sfmt_t sfmt;
@@ -81,6 +91,18 @@ static void randomString(char* out, size_t length)
     *out = '\0';
 }
 
+// generates initial password for a block of rainbow chains
+static void prepareBlock(struct args *args, struct rainbow_chain *chains)
+{
+    int i;
+
+    for (i = 0; i < args->chainsInBlock; ++i)
+    {
+        randomString(chains[i].password, args->passwordLength);
+    }
+}
+
+#if !OPENCL_MODE
 // generates one rainbow table chain, results in ont rainbow table row
 static void generateRainbowTableChain(struct args *args,
                                       struct rainbow_chain *chain)
@@ -101,17 +123,6 @@ static void generateRainbowTableChain(struct args *args,
     memcpy(chain->hash, passwordHash, sizeof(passwordHash));
 }
 
-// generates initial password for a block of rainbow chains
-static void prepareBlock(struct args *args, struct rainbow_chain *chains)
-{
-    int i;
-
-    for (i = 0; i < args->chainsInBlock; ++i)
-    {
-        randomString(chains[i].password, args->passwordLength);
-    }
-}
-
 // generates all rainbow chains in a block of rainbow chains
 static void processBlock(struct args *args, struct rainbow_chain *chains)
 {
@@ -129,6 +140,7 @@ static void processBlock(struct args *args, struct rainbow_chain *chains)
         generateRainbowTableChain(args, &chains[i]);
     }
 }
+#endif
 
 static int chainCompare(const void *a, const void *b)
 {
@@ -254,6 +266,321 @@ static void sortTables(struct args *args, uint32_t numberOfBlocks)
     fclose(out);
 }
 
+#if OPENCL_MODE
+static cl_context opencl_context;
+static cl_command_queue opencl_queue[2];
+static cl_program opencl_program;
+static cl_kernel opencl_kernel;
+static cl_mem opencl_in_mem[2];
+static cl_mem opencl_out_mem[2];
+static uint8_t *tmp_buf;
+static int passwordSize;
+static int hashSize;
+
+// generates initial password for a block of rainbow chains
+static void prepareBlockCl(struct args *args, struct rainbow_chain *chains,
+                           int index)
+{
+    uint8_t *tmp = tmp_buf;
+    cl_int error;
+    int i;
+
+    prepareBlock(args, chains);
+
+    memset(tmp, 0, passwordSize * args->chainsInBlock);
+
+    for (i = 0; i < args->chainsInBlock; ++i) {
+        memcpy(tmp, chains[i].password, args->passwordLength);
+        tmp += passwordSize;
+    }
+
+    error = clEnqueueWriteBuffer(opencl_queue[index], opencl_in_mem[index],
+                                 CL_TRUE, 0, passwordSize * args->chainsInBlock,
+                                 tmp_buf, 0, NULL, NULL);
+    assert(error == CL_SUCCESS);
+}
+
+// generates all rainbow chains in a block of rainbow chains
+static void processBlockCl(struct args *args, struct rainbow_chain *chains,
+                           int index)
+{
+#ifdef USE_VECTORS
+    const size_t globalWorkSize[] = { args->chainsInBlock / 4, 0, 0 };
+#else
+    const size_t globalWorkSize[] = { args->chainsInBlock, 0, 0 };
+#endif
+    cl_int error;
+
+    clSetKernelArg(opencl_kernel, 0, sizeof(cl_mem), &opencl_out_mem[index]);
+    clSetKernelArg(opencl_kernel, 1, sizeof(cl_mem), &opencl_in_mem[index]);
+    clSetKernelArg(opencl_kernel, 2, sizeof(*args), args);
+
+    error = clEnqueueNDRangeKernel(opencl_queue[index], opencl_kernel, 1, NULL,
+                                   globalWorkSize, NULL, 0, NULL, NULL);
+    assert(error == CL_SUCCESS);
+
+    clFlush(opencl_queue[index]);
+}
+
+// makes sure that block processing finished
+static void finishBlockCl(int index)
+{
+    clFinish(opencl_queue[index]);
+}
+
+// saves a block of random chains to file
+static void saveBlockCl(struct args *args, struct rainbow_chain *chains,
+                        uint32_t blockNumber, int index)
+{
+    uint8_t *tmp = tmp_buf;
+    cl_int error;
+    int i;
+
+    error = clEnqueueReadBuffer(opencl_queue[index], opencl_out_mem[index],
+                                CL_TRUE, 0, hashSize * args->chainsInBlock,
+                                tmp_buf, 0, NULL, NULL);
+    assert(error == CL_SUCCESS);
+
+    for (i = 0; i < args->chainsInBlock; ++i) {
+        memcpy(chains[i].hash, tmp, sizeof(chains->hash));
+        tmp += hashSize;
+    }
+
+    saveBlock(args, chains, blockNumber);
+}
+
+static size_t loadKernel(char **retSrcBuf)
+{
+    char buf[4096];
+    FILE *source;
+    size_t ret;
+    size_t size = 0;
+    size_t srcBufSize = 4096;
+    char *srcBuf;
+
+    source = fopen("rainbow.cl", "rb");
+    if (!source) {
+        fprintf(stderr, "failed to open kernel source code (rainbow.cl)\n");
+        return 0;
+    }
+
+    srcBuf = malloc(srcBufSize);
+    assert(srcBuf);
+
+    while (!feof(source)) {
+        ret = fread(buf, 1, sizeof(buf), source);
+        if (!ret)
+            break;
+
+        if (size + ret > srcBufSize) {
+            srcBufSize *= 2;
+            srcBuf = realloc(srcBuf, srcBufSize);
+            assert(srcBuf);
+        }
+
+        memcpy(srcBuf + size, buf, ret);
+        size += ret;
+    }
+
+    fclose(source);
+
+    *retSrcBuf = srcBuf;
+    return size;
+}
+
+static int initOpenCL(struct args *args)
+{
+    cl_uint platformIdCount = 0;
+    cl_platform_id *platformIds;
+    cl_platform_id platformId;
+    cl_uint deviceIdCount = 0;
+    cl_device_id *deviceIds;
+    cl_device_id deviceId;
+    cl_context_properties contextProperties[] = {
+        CL_CONTEXT_PLATFORM,
+        0, 0, 0
+    };
+    cl_int error = 0;
+    char *srcBuf;
+    size_t srcSize;
+    int i;
+
+    clGetPlatformIDs(0, NULL, &platformIdCount);
+    if (platformIdCount == 0) {
+        fprintf(stderr, "no OpenCL platforms found\n");
+        return -1;
+    }
+
+    platformIds = calloc(platformIdCount, sizeof(*platformIds));
+    assert(platformIds);
+
+    clGetPlatformIDs(platformIdCount, platformIds, NULL);
+    platformId = platformIds[0];
+    free(platformIds);
+
+    clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, 0, NULL, &deviceIdCount);
+    if (deviceIdCount == 0) {
+        fprintf(stderr, "no OpenCL device found\n");
+        return -1;
+    }
+
+    deviceIds = calloc(deviceIdCount, sizeof(*deviceIds));
+    assert(deviceIds);
+
+    clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, deviceIdCount,
+                   deviceIds, NULL);
+    deviceId = deviceIds[0];
+
+    contextProperties[1] = (intptr_t)platformId;
+
+    opencl_context = clCreateContext(contextProperties, deviceIdCount,
+                                     deviceIds, NULL, NULL, &error);
+
+    if (error != CL_SUCCESS) {
+        fprintf(stderr, "OpenCL error %d at %s:%d\n",
+                error, __FILE__, __LINE__);
+        goto err_free_device_ids;
+    }
+
+    for (i = 0; i < 2; ++i) {
+        opencl_queue[i] = clCreateCommandQueue(opencl_context, deviceId,
+                                               0, &error);
+        if (error != CL_SUCCESS) {
+            fprintf(stderr, "OpenCL error %d at %s:%d\n",
+                    error, __FILE__, __LINE__);
+            goto err_destroy_queues;
+        }
+    }
+
+    srcSize = loadKernel(&srcBuf);
+    if (!srcSize) {
+        fprintf(stderr, "failed to load OpenCL kernel\n");
+        goto err_destroy_queues;
+    }
+
+    opencl_program = clCreateProgramWithSource(opencl_context,
+                                               1, (const char **)&srcBuf,
+                                               &srcSize, &error);
+    if (error != CL_SUCCESS) {
+        fprintf(stderr, "OpenCL error %d at %s:%d\n",
+                error, __FILE__, __LINE__);
+        goto err_free_source;
+    }
+
+    error = clBuildProgram(opencl_program, deviceIdCount, deviceIds,
+                           NULL, NULL, NULL);
+    if (error != CL_SUCCESS) {
+        // Determine the size of the log
+        size_t log_size;
+
+        clGetProgramBuildInfo(opencl_program, deviceId, CL_PROGRAM_BUILD_LOG,
+                              0, NULL, &log_size);
+
+        // Allocate memory for the log
+        char *log = (char *) malloc(log_size);
+
+        // Get the log
+        clGetProgramBuildInfo(opencl_program, deviceId, CL_PROGRAM_BUILD_LOG,
+                              log_size, log, NULL);
+
+        // Print the log
+        fprintf(stderr, "OpenCL program compilation error:\n");
+        fprintf(stderr, "%s\n", log);
+
+        goto err_free_program;
+    }
+
+    opencl_kernel = clCreateKernel(opencl_program, "rainbow", &error);
+    if (error != CL_SUCCESS) {
+        fprintf(stderr, "OpenCL error %d at %s:%d\n",
+                error, __FILE__, __LINE__);
+        goto err_free_program;
+    }
+
+    /* Keep array elements aligned */
+    passwordSize = (args->passwordLength + 15) & ~15;
+    hashSize = (sizeof(hash_t) + 15) & ~15;
+
+    for (i = 0; i < 2; ++i) {
+        opencl_in_mem[i] = clCreateBuffer(opencl_context,
+                                          CL_MEM_READ_ONLY,
+                                          passwordSize * args->chainsInBlock,
+                                          NULL, &error);
+        if (error != CL_SUCCESS) {
+            fprintf(stderr, "OpenCL error %d at %s:%d\n",
+                    error, __FILE__, __LINE__);
+            goto err_free_buffers;
+        }
+
+        opencl_out_mem[i] = clCreateBuffer(opencl_context,
+                                          CL_MEM_WRITE_ONLY,
+                                          hashSize * args->chainsInBlock,
+                                          NULL, &error);
+        if (error != CL_SUCCESS) {
+            fprintf(stderr, "OpenCL error %d at %s:%d\n",
+                    error, __FILE__, __LINE__);
+            goto err_free_buffers;
+        }
+    }
+
+    tmp_buf = calloc(args->chainsInBlock, passwordSize > hashSize ?
+                                                    passwordSize : hashSize);
+    assert(tmp_buf);
+
+    free(srcBuf);
+    free(deviceIds);
+
+    return 0;
+
+err_free_buffers:
+    for (i = 0; i < 2; ++i) {
+        if (opencl_in_mem[i])
+            clReleaseMemObject(opencl_in_mem[i]);
+        if (opencl_out_mem[i])
+            clReleaseMemObject(opencl_out_mem[i]);
+    }
+
+    clReleaseKernel(opencl_kernel);
+
+err_free_program:
+    clReleaseProgram(opencl_program);
+
+err_free_source:
+    free(srcBuf);
+
+err_destroy_queues:
+    for (i = 0; i < 2; ++i)
+        if (opencl_queue[i])
+            clReleaseCommandQueue(opencl_queue[i]);
+
+err_free_device_ids:
+    free(deviceIds);
+
+    clReleaseContext(opencl_context);
+
+    return -1;
+}
+
+static void releaseOpenCL(void)
+{
+    int i;
+
+    free(tmp_buf);
+
+    for (i = 0; i < 2; ++i) {
+        clReleaseMemObject(opencl_in_mem[i]);
+        clReleaseMemObject(opencl_out_mem[i]);
+    }
+
+    clReleaseKernel(opencl_kernel);
+    clReleaseProgram(opencl_program);
+
+    for (i = 0; i < 2; ++i)
+        clReleaseCommandQueue(opencl_queue[i]);
+    clReleaseContext(opencl_context);
+}
+#endif
+
 // entry point of the program
 int main(int argc, char **argv)
 {
@@ -333,6 +660,12 @@ int main(int argc, char **argv)
 
 #endif
 
+#if OPENCL_MODE
+    assert(initOpenCL(&args) == 0);
+    prepareBlockCl(&args, chains[0], 0);
+
+#endif
+
     current = 0;
     for (i = 0; i < numberOfBlocks; ++i) {
 
@@ -350,6 +683,13 @@ int main(int argc, char **argv)
         cilk_sync;
         cilk_spawn saveBlock(&args, chains[current], i);
 
+#elif OPENCL_MODE
+        finishBlockCl((i - 1) % 2);
+        processBlockCl(&args, chains[0], i % 2);
+        if (i != 0)
+            saveBlockCl(&args, chains[0], i - 1, (i - 1) % 2);
+        prepareBlockCl(&args, chains[0], (i + 1) % 2);
+
 #else
         prepareBlock(&args, chains[current]);
         processBlock(&args, chains[current]);
@@ -365,6 +705,12 @@ int main(int argc, char **argv)
 
 #if CILK_MODE
     cilk_sync;
+
+#endif
+
+#if OPENCL_MODE
+    finishBlockCl((i - 1) % 2);
+    saveBlockCl(&args, chains[0], i - 1, (i - 1) % 2);
 
 #endif
 
