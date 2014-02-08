@@ -133,6 +133,9 @@ static void processBlock(struct args *args, struct rainbow_chain *chains)
     for(i = 0; i < args->chainsInBlock; ++i)
 #elif CILK_MODE
     cilk_for (i = 0; i < args->chainsInBlock; ++i)
+#elif OPENACC_MODE
+    #pragma acc kernels
+    for(i = 0; i < args->chainsInBlock; ++i)
 #else
     for(i = 0; i < args->chainsInBlock; ++i)
 #endif

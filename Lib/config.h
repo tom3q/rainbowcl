@@ -8,6 +8,7 @@
 #define CILK_MODE               0
 #define USE_PIPELINING          0
 #define OPENCL_MODE             1
+#define OPENACC_MODE            0
 
 #if (OPENMP_MODE + CILK_MODE + OPENCL_MODE) > 1
     #error "Only one parallel mode can be enabled at the same time"
