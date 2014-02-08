@@ -684,8 +684,8 @@ int main(int argc, char **argv)
         cilk_spawn saveBlock(&args, chains[current], i);
 
 #elif OPENCL_MODE
-        finishBlockCl((i - 1) % 2);
         processBlockCl(&args, chains[0], i % 2);
+        finishBlockCl((i - 1) % 2);
         if (i != 0)
             saveBlockCl(&args, chains[0], i - 1, (i - 1) % 2);
         prepareBlockCl(&args, chains[0], (i + 1) % 2);

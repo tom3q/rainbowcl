@@ -1,11 +1,11 @@
 #include "utils.h"
 
 // user-defined constant
-const char charset[CHARSET_SIZE] = "0123456789,."
+const char charset[CHARSET_SIZE + 1] = "0123456789,."
                                    "abcdefghijklmnopqrstuvwxyz"
                                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 // generated from charset above using ReduceGenerator
-const char reductionMap[REDUCTION_TABLE_SIZE] =
+const char reductionMap[REDUCTION_TABLE_SIZE + 1] =
                                     "bKeixL,OfX.IyFAoPVafpxZtjXBRzG7w"
                                     "JIDdQ8IKLzI6VG0n9j0b4i7xbcKBg640"
                                     "EqOT90SdpdMAehKBgdthFmQGanZe5Fq2"
